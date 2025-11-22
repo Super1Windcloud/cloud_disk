@@ -13,40 +13,40 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @Configuration
 public class SecurityConfig {
 
-    @Bean
-    SecurityFilterChain securityFilterChain(
-            HttpSecurity http, ObjectProvider<ClientRegistrationRepository> repoProvider) {
-        ClientRegistrationRepository repo = repoProvider.getIfAvailable();
-        boolean oauthConfigured = repo != null && repo.findByRegistrationId("google") != null;
+  @Bean
+  SecurityFilterChain securityFilterChain(
+      HttpSecurity http, ObjectProvider<ClientRegistrationRepository> repoProvider) {
+    ClientRegistrationRepository repo = repoProvider.getIfAvailable();
+    boolean oauthConfigured = repo != null && repo.findByRegistrationId("google") != null;
 
-        if (oauthConfigured) {
-            http.authorizeHttpRequests(
-                            auth ->
-                                    auth.requestMatchers(
-                                                    "/css/**",
-                                                    "/js/**",
-                                                    "/images/**",
-                                                    "/",
-                                                    "/index",
-                                                    "/s/**",
-                                                    "/api/files/browse",
-                                                    "/error")
-                                            .permitAll()
-                                            .anyRequest()
-                                            .authenticated())
-                    .exceptionHandling(
-                            exceptions ->
-                                    exceptions.authenticationEntryPoint(
-                                            new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
-                    .oauth2Login(oauth -> oauth.defaultSuccessUrl("/", true))
-                    .logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/").permitAll())
-                    .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/logout"));
-        } else {
-            // Fallback: allow all if OAuth is not configured, so the app can start without client-id
-            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                    .csrf(AbstractHttpConfigurer::disable);
-        }
-
-        return http.build();
+    if (oauthConfigured) {
+      http.authorizeHttpRequests(
+              auth ->
+                  auth.requestMatchers(
+                          "/css/**",
+                          "/js/**",
+                          "/images/**",
+                          "/",
+                          "/index",
+                          "/s/**",
+                          "/api/files/browse",
+                          "/error")
+                      .permitAll()
+                      .anyRequest()
+                      .authenticated())
+          .exceptionHandling(
+              exceptions ->
+                  exceptions.authenticationEntryPoint(
+                      new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+          .oauth2Login(oauth -> oauth.defaultSuccessUrl("/", true))
+          .logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/").permitAll())
+          .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/logout"));
+    } else {
+      // Fallback: allow all if OAuth is not configured, so the app can start without client-id
+      http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+          .csrf(AbstractHttpConfigurer::disable);
     }
+
+    return http.build();
+  }
 }

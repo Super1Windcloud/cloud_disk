@@ -98,6 +98,19 @@ body {
     border: 1px solid var(--border);
     cursor: pointer;
 }
+.crumb-label {
+    color: var(--muted);
+    font-size: 13px;
+}
+.crumb-sep {
+    color: var(--muted);
+    padding: 0 4px;
+}
+.crumb.active {
+    border-color: var(--accent);
+    color: var(--accent-2);
+    cursor: default;
+}
 .crumb:hover { border-color: var(--accent); color: var(--accent-2); }
 .badge {
     padding: 6px 10px;
@@ -114,6 +127,26 @@ table {
     margin-top: 8px;
     font-size: 14px;
 }
+.name-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.file-icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+}
+.file-icon.folder { color: var(--accent-2); }
+.file-icon.image { color: #a5b4fc; }
+.file-icon.video { color: #fbbf24; }
+.file-icon.audio { color: #34d399; }
+.file-icon.archive { color: #fb7185; }
+.file-icon.doc { color: #38bdf8; }
+.file-icon.code { color: #c084fc; }
 th, td {
     padding: 10px 8px;
     border-bottom: 1px solid var(--border);

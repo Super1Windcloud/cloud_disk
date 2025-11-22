@@ -122,6 +122,26 @@
       margin-top: 8px;
       font-size: 14px;
     }
+    .name-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+    }
+    .file-icon.folder { color: var(--accent-2); }
+    .file-icon.image { color: #a5b4fc; }
+    .file-icon.video { color: #fbbf24; }
+    .file-icon.audio { color: #34d399; }
+    .file-icon.archive { color: #fb7185; }
+    .file-icon.doc { color: #38bdf8; }
+    .file-icon.code { color: #c084fc; }
     th, td {
       padding: 10px 8px;
       border-bottom: 1px solid var(--border);
@@ -276,6 +296,26 @@
       return new Date(str).toLocaleString();
     }
 
+    function iconFor(item) {
+      const name = (item.filename || '').toLowerCase();
+      const type = (item.contentType || '').toLowerCase();
+      const ext = name.includes('.') ? name.substring(name.lastIndexOf('.') + 1) : '';
+      if (item.directory) return {cls: 'folder', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></svg>'};
+      const isImage = type.startsWith('image/') || ['png','jpg','jpeg','gif','bmp','svg','webp','heic','heif'].includes(ext);
+      if (isImage) return {cls: 'image', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m3 16 4.5-4.5a2 2 0 0 1 2.8 0L17 18"/></svg>'};
+      const isVideo = type.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext);
+      if (isVideo) return {cls: 'video', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>'};
+      const isAudio = type.startsWith('audio/') || ['mp3','wav','flac','aac','ogg','m4a'].includes(ext);
+      if (isAudio) return {cls: 'audio', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l9-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>'};
+      const isArchive = ['zip','rar','7z','tar','gz','tgz','bz2'].includes(ext);
+      if (isArchive) return {cls: 'archive', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 3v18M9 7h2M9 11h2M9 15h2"/></svg>'};
+      const isDoc = ['pdf','doc','docx','txt','md','rtf'].includes(ext);
+      if (isDoc) return {cls: 'doc', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v6h6"/></svg>'};
+      const isCode = ['js','ts','tsx','jsx','json','java','kt','go','py','rb','php','html','css','sql','xml','yml','yaml'].includes(ext);
+      if (isCode) return {cls: 'code', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 7l-2 10"/></svg>'};
+      return {cls: '', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5"/></svg>'};
+    }
+
     async function loadFiles(path) {
       const errBox = document.getElementById('fileError');
       errBox.style.display = 'none';
@@ -295,12 +335,22 @@
         data.forEach(item => {
           const tr = document.createElement('tr');
           const nameTd = document.createElement('td');
-          nameTd.textContent = item.filename;
+          const nameWrap = document.createElement('div');
+          nameWrap.className = 'name-cell';
+          const iconMeta = iconFor(item);
+          const icon = document.createElement('span');
+          icon.className = `file-icon ${iconMeta.cls}`.trim();
+          icon.innerHTML = iconMeta.svg;
+          const nameLabel = document.createElement('span');
+          nameLabel.textContent = item.filename;
           if (item.directory) {
-            nameTd.className = 'dir';
-            nameTd.title = '双击进入';
-            nameTd.ondblclick = () => enterDirectory(item.filename);
+            nameLabel.className = 'dir';
+            nameWrap.title = '双击进入';
+            nameWrap.ondblclick = () => enterDirectory(item.filename);
           }
+          nameWrap.appendChild(icon);
+          nameWrap.appendChild(nameLabel);
+          nameTd.appendChild(nameWrap);
           tr.appendChild(nameTd);
           const typeTd = document.createElement('td');
           typeTd.textContent = item.directory ? '目录' : (item.contentType || '文件');

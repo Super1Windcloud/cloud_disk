@@ -63,6 +63,7 @@ public class FileController {
             .orElseThrow(() -> new IllegalArgumentException("Storage source not found"));
     StorageService storageService = resolveStorage(source);
     storageService.ensureDirectory(source, directoryPath);
+    ensureDirectoryChain(source, directoryPath);
     FileItem item =
         storageService.store(
             source,
@@ -108,21 +109,7 @@ public class FileController {
     StorageService storageService = resolveStorage(source);
     storageService.ensureDirectory(source, normalized);
 
-    return fileItemRepository
-        .findFirstByStorageSourceIdAndDirectoryPathAndFilenameAndDirectoryTrue(
-            sourceId, parent, name)
-        .orElseGet(
-            () -> {
-              FileItem dir = new FileItem();
-              dir.setDirectory(true);
-              dir.setDirectoryPath(parent);
-              dir.setFilename(name);
-              dir.setStorageSource(source);
-              dir.setStoragePath(normalized + "/");
-              dir.setSize(0L);
-              dir.setContentType("inode/directory");
-              return fileItemRepository.save(dir);
-            });
+    return ensureDirectoryChain(source, normalized);
   }
 
   @GetMapping("/{id}/download")
@@ -234,6 +221,39 @@ public class FileController {
         .filter(s -> s.supports(source))
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("No storage service found"));
+  }
+
+  private FileItem ensureDirectoryChain(StorageSource source, String normalizedPath) {
+    if (normalizedPath == null || normalizedPath.isBlank()) {
+      return null;
+    }
+    String parent = "";
+    FileItem last = null;
+    for (String part : normalizedPath.split("/")) {
+      if (part.isBlank()) {
+        continue;
+      }
+      String currentPath = parent.isBlank() ? part : parent + "/" + part;
+      String finalParent = parent;
+      last =
+          fileItemRepository
+              .findFirstByStorageSourceIdAndDirectoryPathAndFilenameAndDirectoryTrue(
+                  source.getId(), parent, part)
+              .orElseGet(
+                  () -> {
+                    FileItem dir = new FileItem();
+                    dir.setDirectory(true);
+                    dir.setDirectoryPath(finalParent);
+                    dir.setFilename(part);
+                    dir.setStorageSource(source);
+                    dir.setStoragePath(currentPath + "/");
+                    dir.setSize(0L);
+                    dir.setContentType("inode/directory");
+                    return fileItemRepository.save(dir);
+                  });
+      parent = currentPath;
+    }
+    return last;
   }
 
   private String normalizeDirectory(String raw) {
