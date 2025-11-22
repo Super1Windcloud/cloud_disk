@@ -1,5 +1,5 @@
-<!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,229 +7,401 @@
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body th:data-google-enabled="${googleEnabled}">
-<header class="hero">
-    <div class="hero__title">Cloud Disk</div>
-    <div class="hero__subtitle">Upload, share, and preview files with elegant simplicity.</div>
-    <div class="hero__actions">
-        <label class="btn primary">
-            Upload File
-            <input id="fileInput" type="file" hidden>
-        </label>
-        <button id="newFolderBtn" class="btn ghost">New Folder</button>
-        <button id="upBtn" class="btn ghost">Up</button>
-        <button id="refreshBtn" class="btn ghost">Refresh</button>
+<aside class="sidebar">
+    <div class="brand">Cloud Disk</div>
+    <ul class="menu">
+        <li><button data-tab="files" class="active">我的文件 <span class="pill">Browse</span></button></li>
+        <li><button data-tab="shares">我的分享 <span class="pill">Links</span></button></li>
+        <li><button data-tab="trash">回收站 <span class="pill">Soon</span></button></li>
+    </ul>
+</aside>
+<main class="main">
+    <div class="top-bar user-bar">
+        <div class="badge" id="sourceBadge">加载存储源...</div>
         <div class="spacer"></div>
-        <div id="userBadge" class="user-badge">
-            <a class="btn primary" href="/oauth2/authorization/google" th:if="${googleEnabled}">Sign in with Google</a>
-            <span class="muted" th:unless="${googleEnabled}">Google login is not configured.</span>
-        </div>
+        <div id="userBadge" class="user-badge"></div>
     </div>
-</header>
-
-<main class="layout">
-    <section class="card">
-        <div class="card__header">
-            <div>
-                <div class="eyebrow">Files</div>
-                <div class="title">Library</div>
-                <div class="muted" id="pathDisplay">/</div>
+    <section id="files" class="panel">
+        <div class="top-bar">
+            <div class="breadcrumbs" id="breadcrumbs"></div>
+            <select id="sourceSelect" class="select"></select>
+            <div class="controls">
+                <label class="btn primary">
+                    上传文件
+                    <input id="fileInput" type="file" hidden>
+                </label>
+                <label class="btn ghost">
+                    上传文件夹
+                    <input id="folderInput" type="file" webkitdirectory hidden>
+                </label>
+                <button class="btn ghost" id="newFolderBtn">新建文件夹</button>
             </div>
-            <div class="muted">Short links expire automatically if TTL set.</div>
         </div>
-        <div id="fileList" class="file-list"></div>
+        <div id="fileError" class="error" style="display:none;"></div>
+        <table>
+            <thead>
+            <tr><th>名称</th><th>类型</th><th>大小</th><th>创建时间</th></tr>
+            </thead>
+            <tbody id="fileTable"></tbody>
+        </table>
+        <div id="fileEmpty" class="empty" style="display:none;">此目录暂无文件</div>
     </section>
 
-    <section class="card">
-        <div class="card__header">
-            <div class="eyebrow">Preview</div>
-            <div class="title">Selected File</div>
+    <section id="shares" class="panel" style="display:none;">
+        <div class="top-bar">
+            <h3 style="margin:0;">我的分享</h3>
+            <span class="badge">短链列表</span>
         </div>
-        <div id="previewArea" class="preview">
-            <div class="muted">Select a file to preview.</div>
+        <div id="shareError" class="error" style="display:none;"></div>
+        <table>
+            <thead>
+            <tr><th>Token</th><th>文件</th><th>过期时间</th><th>创建时间</th></tr>
+            </thead>
+            <tbody id="shareTable"></tbody>
+        </table>
+        <div id="shareEmpty" class="empty" style="display:none;">暂无分享</div>
+    </section>
+
+    <section id="trash" class="panel" style="display:none;">
+        <div class="top-bar">
+            <h3 style="margin:0;">回收站</h3>
+            <span class="badge">即将上线</span>
         </div>
+        <p class="muted">回收站功能暂未实现，后续将支持文件软删除与恢复。</p>
     </section>
 </main>
 
-<template id="file-row">
-    <div class="file-row">
-        <div class="file-row__meta">
-            <div class="file-row__name"></div>
-            <div class="file-row__info muted"></div>
-        </div>
-        <div class="file-row__actions">
-            <button class="btn ghost preview-btn">Preview</button>
-            <button class="btn ghost link-btn">Short Link</button>
-            <a class="btn primary download-btn" target="_blank">Download</a>
-        </div>
-    </div>
-</template>
-
 <script>
-    const fileInput = document.getElementById('fileInput');
-const refreshBtn = document.getElementById('refreshBtn');
-const newFolderBtn = document.getElementById('newFolderBtn');
-const upBtn = document.getElementById('upBtn');
-const fileList = document.getElementById('fileList');
-const previewArea = document.getElementById('previewArea');
-const userBadge = document.getElementById('userBadge');
-const googleEnabled = document.body.dataset.googleEnabled === 'true';
-const pathDisplay = document.getElementById('pathDisplay');
-let filesCache = [];
-let currentPath = '';
-const sourceId = 1;
+    const state = { tab: 'files', sourceId: null, sourceName: '', path: '' };
+    const googleEnabled = document.body.dataset.googleEnabled === 'true';
 
-fileInput.addEventListener('change', async (e) => {
+    document.querySelectorAll('.menu button').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    document.getElementById('sourceSelect').addEventListener('change', (e) => {
+        state.sourceId = Number(e.target.value);
+        state.sourceName = e.target.options[e.target.selectedIndex].textContent;
+        document.getElementById('sourceBadge').textContent = state.sourceName;
+        loadFiles(state.path);
+    });
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('sourceId', sourceId);
-        formData.append('path', currentPath);
-        await fetch('/api/files/upload', {method: 'POST', body: formData, credentials: 'include'});
-        await loadFiles();
-    });
-
-    refreshBtn.addEventListener('click', loadFiles);
-    newFolderBtn.addEventListener('click', async () => {
-        const name = prompt('Folder name');
-        if (!name) return;
-        const path = currentPath ? `${currentPath}/${name}` : name;
-        await fetch(`/api/files/directories?sourceId=${sourceId}&path=${encodeURIComponent(path)}`, {method: 'POST', credentials: 'include'});
-        await loadFiles();
-    });
-
-    upBtn.addEventListener('click', () => {
-        if (!currentPath) return;
-        const idx = currentPath.lastIndexOf('/');
-        currentPath = idx >= 0 ? currentPath.substring(0, idx) : '';
-        renderPath();
-        loadFiles();
-    });
-
-async function loadFiles() {
-        const res = await fetch(`/api/files/browse?sourceId=${sourceId}&path=${encodeURIComponent(currentPath)}`, {credentials: 'include'});
-        if (res.status === 401) {
-            filesCache = [];
-            renderFiles();
-            return;
+        try {
+            await uploadSingle(file, state.path);
+            await loadFiles(state.path);
+        } catch (err) {
+            showError('fileError', err.message);
+        } finally {
+            e.target.value = '';
         }
-        filesCache = await res.json();
-        renderFiles();
-}
+    });
 
-    function renderFiles() {
-        fileList.innerHTML = '';
-        renderPath();
-        const tpl = document.getElementById('file-row');
-        filesCache.forEach(file => {
-            const node = tpl.content.cloneNode(true);
-            node.querySelector('.file-row__name').textContent = file.directory ? `📁 ${file.filename}` : file.filename;
-            if (file.directory) {
-                node.querySelector('.file-row__info').textContent = 'Folder';
-                node.querySelector('.download-btn').remove();
-                node.querySelector('.preview-btn').textContent = 'Open';
-                node.querySelector('.preview-btn').addEventListener('click', () => openFolder(file));
-                node.querySelector('.link-btn').remove();
-            } else {
-                node.querySelector('.file-row__info').textContent = `${(file.size/1024).toFixed(1)} KB · ${file.contentType || 'unknown'}`;
-                node.querySelector('.download-btn').href = `/api/files/${file.id}/download`;
-                node.querySelector('.preview-btn').addEventListener('click', () => preview(file));
-                node.querySelector('.link-btn').addEventListener('click', () => createShortLink(file));
+    document.getElementById('folderInput').addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        try {
+            for (const file of files) {
+                const rel = file.webkitRelativePath || file.name;
+                const dir = rel.includes('/') ? rel.substring(0, rel.lastIndexOf('/')) : '';
+                const targetDir = state.path ? (dir ? `${state.path}/${dir}` : state.path) : dir;
+                await uploadSingle(file, targetDir);
             }
-            fileList.appendChild(node);
+            await loadFiles(state.path);
+        } catch (err) {
+            showError('fileError', err.message);
+        } finally {
+            e.target.value = '';
+        }
+    });
+
+    document.getElementById('newFolderBtn').addEventListener('click', async () => {
+        const name = prompt('新建文件夹名称');
+        if (!name) return;
+        const target = state.path ? `${state.path}/${name}` : name;
+        try {
+            const res =
+                    await fetch(
+                            `/api/files/directories?sourceId=${state.sourceId}&path=${encodeURIComponent(target)}`,
+                            {method: 'POST', credentials: 'include'});
+            if (!res.ok) throw new Error('创建失败');
+            await loadFiles(state.path);
+        } catch (err) {
+            showError('fileError', err.message);
+        }
+    });
+
+    function switchTab(tab) {
+        state.tab = tab;
+        document.querySelectorAll('.menu button').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+        document.querySelectorAll('main .panel').forEach(panel => panel.style.display = panel.id === tab ? 'block' : 'none');
+        if (tab === 'files') loadFiles(state.path);
+        if (tab === 'shares') loadShares();
+    }
+
+    async function loadSources() {
+        try {
+            const res = await fetch('/api/storage-sources');
+            if (!res.ok) throw new Error('无法获取存储源');
+            const sources = await res.json();
+            if (!sources.length) throw new Error('没有可用的存储源');
+            const select = document.getElementById('sourceSelect');
+            select.innerHTML = '';
+            sources.forEach((s) => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name || `源 #${s.id}`;
+                select.appendChild(opt);
+            });
+            const preferred =
+                    sources.find((s) => (s.name || '').toLowerCase() === 'minio-default')
+                    || sources[0];
+            select.value = preferred.id;
+            state.sourceId = Number(preferred.id);
+            state.sourceName = preferred.name || `源 #${preferred.id}`;
+            document.getElementById('sourceBadge').textContent = state.sourceName;
+            await loadFiles('');
+        } catch (e) {
+            showError('fileError', e.message);
+        }
+    }
+
+    function showError(id, msg) {
+        const el = document.getElementById(id);
+        el.textContent = msg;
+        el.style.display = 'block';
+    }
+
+    function clearError(id) {
+        const el = document.getElementById(id);
+        el.style.display = 'none';
+    }
+
+    function renderBreadcrumbs() {
+        const holder = document.getElementById('breadcrumbs');
+        holder.innerHTML = '';
+        const root = document.createElement('span');
+        root.className = 'crumb';
+        root.textContent = '根目录';
+        root.onclick = () => navigateToPath('');
+        holder.appendChild(root);
+        if (!state.path) return;
+        let acc = '';
+        state.path.split('/').forEach((part, idx, arr) => {
+            acc = acc ? acc + '/' + part : part;
+            const span = document.createElement('span');
+            span.className = 'crumb';
+            span.textContent = part;
+            if (idx < arr.length - 1) {
+                span.onclick = () => navigateToPath(acc);
+            } else {
+                span.style.cursor = 'default';
+                span.style.borderColor = 'var(--accent)';
+            }
+            holder.appendChild(span);
         });
     }
 
-    function renderPath() {
-        pathDisplay.textContent = currentPath ? `/${currentPath}` : '/';
+    function humanSize(bytes) {
+        if (bytes == null || isNaN(bytes)) return '-';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let n = bytes, i = 0;
+        while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+        return n.toFixed(n >= 10 || i === 0 ? 0 : 1) + ' ' + units[i];
     }
 
-    function preview(file) {
-        previewArea.innerHTML = '';
-        const mime = (file.contentType || '').toLowerCase();
-        const url = `/api/files/${file.id}/preview`;
-        if (mime.startsWith('image/')) {
-            const img = document.createElement('img');
-            img.src = url;
-            img.alt = file.filename;
-            previewArea.appendChild(img);
-        } else if (mime.startsWith('video/')) {
-            const video = document.createElement('video');
-            video.src = url;
-            video.controls = true;
-            video.className = 'media';
-            previewArea.appendChild(video);
-        } else if (mime.startsWith('audio/')) {
-            const audio = document.createElement('audio');
-            audio.src = url;
-            audio.controls = true;
-            previewArea.appendChild(audio);
-        } else if (mime.includes('pdf')) {
-            const iframe = document.createElement('iframe');
-            iframe.src = url;
-            previewArea.appendChild(iframe);
-        } else {
-            const iframe = document.createElement('iframe');
-            iframe.src = url;
-            previewArea.appendChild(iframe);
+    function humanTime(str) {
+        if (!str) return '-';
+        return new Date(str).toLocaleString();
+    }
+
+    async function loadFiles(path) {
+        if (!state.sourceId) return;
+        clearError('fileError');
+        try {
+            const res = await fetch(
+                    `/api/files/browse?sourceId=${state.sourceId}&path=${encodeURIComponent(path || '')}`,
+                    {credentials: 'include'});
+            if (!res.ok) throw new Error('加载文件列表失败');
+            const data = await res.json();
+            state.path = path || '';
+            updateUrl();
+            renderBreadcrumbs();
+            const tbody = document.getElementById('fileTable');
+            tbody.innerHTML = '';
+            document.getElementById('fileEmpty').style.display = data.length ? 'none' : 'block';
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                const nameTd = document.createElement('td');
+                nameTd.textContent = item.filename;
+                if (item.directory) {
+                    nameTd.className = 'dir';
+                    nameTd.title = '双击进入';
+                    nameTd.ondblclick = () => enterDirectory(item.filename);
+                }
+                tr.appendChild(nameTd);
+                const typeTd = document.createElement('td');
+                typeTd.textContent = item.directory ? '目录' : (item.contentType || '文件');
+                tr.appendChild(typeTd);
+                const sizeTd = document.createElement('td');
+                sizeTd.textContent = item.directory ? '-' : humanSize(item.size);
+                tr.appendChild(sizeTd);
+                const timeTd = document.createElement('td');
+                timeTd.textContent = humanTime(item.createdAt);
+                tr.appendChild(timeTd);
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            showError('fileError', e.message);
         }
     }
 
-    async function createShortLink(file) {
-        if (file.directory) return;
-        const res = await fetch(`/api/files/${file.id}/short-link`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ttlSeconds: 3600}), credentials: 'include'});
-        const data = await res.json();
-        navigator.clipboard.writeText(`${window.location.origin}${data.url}`).catch(() => {});
-        alert(`Short link copied: ${data.url}`);
+    function navigateToPath(path) {
+        loadFiles(path);
     }
 
-    function openFolder(file) {
-        currentPath = currentPath ? `${currentPath}/${file.filename}` : file.filename;
-        renderPath();
-        loadFiles();
+    function enterDirectory(name) {
+        const next = state.path ? `${state.path}/${name}` : name;
+        navigateToPath(next);
+    }
+
+    async function loadShares() {
+        clearError('shareError');
+        try {
+            const res = await fetch('/api/files/short-links', {credentials: 'include'});
+            if (!res.ok) throw new Error('加载分享列表失败');
+            const data = await res.json();
+            const tbody = document.getElementById('shareTable');
+            tbody.innerHTML = '';
+            document.getElementById('shareEmpty').style.display = data.length ? 'none' : 'block';
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><code>${item.token}</code></td>
+                    <td>${item.fileItem ? item.fileItem.filename : '-'}</td>
+                    <td>${item.expiresAt ? humanTime(item.expiresAt) : '永久'}</td>
+                    <td>${humanTime(item.createdAt)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            showError('shareError', e.message);
+        }
+    }
+
+    function updateUrl() {
+        const params = new URLSearchParams(window.location.search);
+        if (state.path) {
+            params.set('path', state.path);
+        } else {
+            params.delete('path');
+        }
+        if (state.sourceId) {
+            params.set('sourceId', state.sourceId);
+        }
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        history.replaceState({path: state.path, sourceId: state.sourceId}, '', newUrl);
+    }
+
+    window.addEventListener('popstate', (e) => {
+        const path = (e.state && e.state.path) || new URLSearchParams(window.location.search).get('path') || '';
+        const sourceId = (e.state && e.state.sourceId) || new URLSearchParams(window.location.search).get('sourceId');
+        if (sourceId) {
+            const select = document.getElementById('sourceSelect');
+            const option = Array.from(select.options).find(o => Number(o.value) === Number(sourceId));
+            if (option) {
+                select.value = option.value;
+                state.sourceId = Number(option.value);
+                state.sourceName = option.textContent;
+                document.getElementById('sourceBadge').textContent = state.sourceName;
+            }
+        }
+        navigateToPath(path);
+    });
+
+    function applyInitialRoute() {
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get('path') || '';
+        const sourceId = params.get('sourceId');
+        if (sourceId) {
+            const select = document.getElementById('sourceSelect');
+            const option = Array.from(select.options).find(o => Number(o.value) === Number(sourceId));
+            if (option) {
+                select.value = option.value;
+                state.sourceId = Number(option.value);
+                state.sourceName = option.textContent;
+                document.getElementById('sourceBadge').textContent = state.sourceName;
+            }
+        }
+        navigateToPath(path);
     }
 
     async function loadUser() {
+        const badge = document.getElementById('userBadge');
+        badge.innerHTML = '';
         try {
             const res = await fetch('/api/me', {credentials: 'include'});
             if (res.status === 401) {
-                userBadge.innerHTML = '';
                 if (googleEnabled) {
-                    const btn = document.createElement('a');
-                    btn.className = 'btn primary';
-                    btn.href = '/oauth2/authorization/google';
-                    btn.textContent = 'Sign in with Google';
-                    userBadge.appendChild(btn);
+                    const a = document.createElement('a');
+                    a.className = 'btn primary';
+                    a.href = '/oauth2/authorization/google';
+                    a.textContent = '使用 Google 登录';
+                    badge.appendChild(a);
                 } else {
                     const span = document.createElement('span');
                     span.className = 'muted';
-                    span.textContent = 'Login is not configured.';
-                    userBadge.appendChild(span);
+                    span.textContent = '未登录';
+                    badge.appendChild(span);
                 }
                 return;
             }
             const user = await res.json();
-            userBadge.innerHTML = '';
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
             avatar.textContent = (user.name || user.email || '?').slice(0, 1).toUpperCase();
             const info = document.createElement('div');
             info.className = 'user-info';
-            info.innerHTML = `<div class="user-name">${user.name || user.email}</div><div class="muted user-email">${user.email || ''}</div>`;
+            info.innerHTML =
+                    `<div class="user-name">${user.name || user.email || ''}</div><div class="muted user-email">${user.email || ''}</div>`;
             const logout = document.createElement('a');
             logout.className = 'btn ghost';
-            logout.href = '/logout';
-            logout.textContent = 'Logout';
-            userBadge.appendChild(avatar);
-            userBadge.appendChild(info);
-            userBadge.appendChild(logout);
+            logout.href = '#';
+            logout.textContent = '退出';
+            logout.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    await fetch('/logout', {method: 'POST', credentials: 'include'});
+                } finally {
+                    window.location.href = '/';
+                }
+            });
+            badge.appendChild(avatar);
+            badge.appendChild(info);
+            badge.appendChild(logout);
         } catch (e) {
-            console.error(e);
+            const span = document.createElement('span');
+            span.className = 'muted';
+            span.textContent = '无法加载用户信息';
+            badge.appendChild(span);
         }
     }
 
+    async function uploadSingle(file, targetDir) {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('sourceId', state.sourceId);
+        form.append('path', targetDir || '');
+        const res = await fetch('/api/files/upload', {method: 'POST', body: form, credentials: 'include'});
+        if (!res.ok) {
+            throw new Error('上传失败');
+        }
+    }
+
+    loadSources().then(applyInitialRoute);
     loadUser();
-    loadFiles();
 </script>
 </body>
 </html>

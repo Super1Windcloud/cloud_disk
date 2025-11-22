@@ -9,10 +9,10 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 public interface ShortLinkRepository extends JpaRepository<ShortLink, Long> {
-    Optional<ShortLink> findByToken(String token);
+  Optional<ShortLink> findByToken(String token);
 
-    @Transactional
-    @Modifying
-    @Query("delete from ShortLink s where s.expiresAt is not null and s.expiresAt < :now")
-    void deleteExpired(@Param("now") Instant now);
+  @Transactional
+  @Modifying
+  @Query("delete from ShortLink s where s.expiresAt is not null and s.expiresAt < :now")
+  void deleteExpired(@Param("now") Instant now);
 }

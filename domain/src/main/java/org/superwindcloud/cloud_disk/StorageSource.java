@@ -14,21 +14,21 @@ import lombok.Data;
 @Table(name = "storage_sources")
 @Data
 public class StorageSource {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String name;
+  @Column(nullable = false, unique = true)
+  private String name;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private StorageType type = StorageType.LOCAL;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private StorageType type = StorageType.LOCAL;
 
-    /**
-     * For LOCAL this is a folder path. For other backends this can hold serialized JSON config or a
-     * connection string; keep flexible for future providers.
-     */
-    @Column(nullable = false, length = 2000)
-    private String config;
+  /**
+   * For LOCAL this is a folder path. For other backends this can hold serialized JSON config or a
+   * connection string; keep flexible for future providers.
+   */
+  @Column(nullable = false, length = 2000)
+  private String config;
 }

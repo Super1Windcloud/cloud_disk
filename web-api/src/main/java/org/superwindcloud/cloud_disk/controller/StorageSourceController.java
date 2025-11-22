@@ -10,14 +10,14 @@ import org.superwindcloud.cloud_disk.StorageSourceRepository;
 @RestController
 @RequestMapping("/api/storage-sources")
 public class StorageSourceController {
-    private final StorageSourceRepository storageSourceRepository;
+  private final StorageSourceRepository storageSourceRepository;
 
-    public StorageSourceController(StorageSourceRepository storageSourceRepository) {
-        this.storageSourceRepository = storageSourceRepository;
-    }
+  public StorageSourceController(StorageSourceRepository storageSourceRepository) {
+    this.storageSourceRepository = storageSourceRepository;
+  }
 
-    @GetMapping
-    public List<StorageSource> list() {
-        return storageSourceRepository.findAll();
-    }
+  @GetMapping
+  public List<StorageSource> list() {
+    return storageSourceRepository.findAll();
+  }
 }

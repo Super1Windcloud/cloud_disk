@@ -16,21 +16,21 @@ import org.hibernate.annotations.CreationTimestamp;
 @Table(name = "short_links")
 @Data
 public class ShortLink {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(nullable = false, unique = true, length = 64)
-    private String token;
+  @Column(nullable = false, unique = true, length = 64)
+  private String token;
 
-    @ManyToOne
-    @JoinColumn(name = "file_item_id", nullable = false)
-    private FileItem fileItem;
+  @ManyToOne
+  @JoinColumn(name = "file_item_id", nullable = false)
+  private FileItem fileItem;
 
-    @Column(name = "expires_at")
-    private Instant expiresAt;
+  @Column(name = "expires_at")
+  private Instant expiresAt;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
+  @CreationTimestamp
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private Instant createdAt;
 }

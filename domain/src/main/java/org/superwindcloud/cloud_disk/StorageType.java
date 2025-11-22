@@ -5,11 +5,11 @@ package org.superwindcloud.cloud_disk;
  * StorageService interface.
  */
 public enum StorageType {
-    LOCAL,
-    S3,
-    ONEDRIVE,
-    SHAREPOINT,
-    GOOGLE_DRIVE,
-    FTP,
-    SFTP
+  LOCAL,
+  S3,
+  ONEDRIVE,
+  SHAREPOINT,
+  GOOGLE_DRIVE,
+  FTP,
+  SFTP
 }
