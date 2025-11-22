@@ -1,0 +1,20 @@
+{
+  "name": "cloud_disk",
+  "version": "1.0.0",
+  "description": "Spring Boot multi-module template for an online cloud storage service. Includes JPA, Redis, security, Thymeleaf UI, OpenAPI, and MinIO client wiring.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Use mvnw test for Java tests\" && exit 0",
+    "prepare": "husky install",
+    "fmt": "mvnw.cmd -DskipTests spotless:apply || ./mvnw -DskipTests spotless:apply",
+    "fmt:check": "mvnw.cmd -DskipTests spotless:check || ./mvnw -DskipTests spotless:check",
+    "lint": "mvnw.cmd -DskipTests checkstyle:check || ./mvnw -DskipTests checkstyle:check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

@@ -6,9 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class CloudDiskApplication {
 
-    public static void main(String[] args) {
+  public static void main(String[] args) {
 
-        SpringApplication.run(CloudDiskApplication.class, args);
-    }
-
+    SpringApplication.run(CloudDiskApplication.class, args);
+  }
 }

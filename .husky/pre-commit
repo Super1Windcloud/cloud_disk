@@ -1,0 +1,3 @@
+#!/bin/sh
+pnpm run fmt || exit $?
+pnpm run lint
