@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: 'postgres:17'
+    environment:
+      - 'POSTGRES_DB=cloud_disk'
+      - 'POSTGRES_PASSWORD=cloud_disk'
+      - 'POSTGRES_USER=cloud_disk'
+    ports:
+      - '5432'
+  redis:
+    image: 'redis:latest'
+    ports:
+      - '6379'
