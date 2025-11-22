@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Disk</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body th:data-google-enabled="${googleEnabled}">
+<header class="hero">
+    <div class="hero__title">Cloud Disk</div>
+    <div class="hero__subtitle">Upload, share, and preview files with elegant simplicity.</div>
+    <div class="hero__actions">
+        <label class="btn primary">
+            Upload File
+            <input id="fileInput" type="file" hidden>
+        </label>
+        <button id="newFolderBtn" class="btn ghost">New Folder</button>
+        <button id="upBtn" class="btn ghost">Up</button>
+        <button id="refreshBtn" class="btn ghost">Refresh</button>
+        <div class="spacer"></div>
+        <div id="userBadge" class="user-badge">
+            <a class="btn primary" href="/oauth2/authorization/google" th:if="${googleEnabled}">Sign in with Google</a>
+            <span class="muted" th:unless="${googleEnabled}">Google login is not configured.</span>
+        </div>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="card">
+        <div class="card__header">
+            <div>
+                <div class="eyebrow">Files</div>
+                <div class="title">Library</div>
+                <div class="muted" id="pathDisplay">/</div>
+            </div>
+            <div class="muted">Short links expire automatically if TTL set.</div>
+        </div>
+        <div id="fileList" class="file-list"></div>
+    </section>
+
+    <section class="card">
+        <div class="card__header">
+            <div class="eyebrow">Preview</div>
+            <div class="title">Selected File</div>
+        </div>
+        <div id="previewArea" class="preview">
+            <div class="muted">Select a file to preview.</div>
+        </div>
+    </section>
+</main>
+
+<template id="file-row">
+    <div class="file-row">
+        <div class="file-row__meta">
+            <div class="file-row__name"></div>
+            <div class="file-row__info muted"></div>
+        </div>
+        <div class="file-row__actions">
+            <button class="btn ghost preview-btn">Preview</button>
+            <button class="btn ghost link-btn">Short Link</button>
+            <a class="btn primary download-btn" target="_blank">Download</a>
+        </div>
+    </div>
+</template>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+const refreshBtn = document.getElementById('refreshBtn');
+const newFolderBtn = document.getElementById('newFolderBtn');
+const upBtn = document.getElementById('upBtn');
+const fileList = document.getElementById('fileList');
+const previewArea = document.getElementById('previewArea');
+const userBadge = document.getElementById('userBadge');
+const googleEnabled = document.body.dataset.googleEnabled === 'true';
+const pathDisplay = document.getElementById('pathDisplay');
+let filesCache = [];
+let currentPath = '';
+const sourceId = 1;
+
+fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('sourceId', sourceId);
+        formData.append('path', currentPath);
+        await fetch('/api/files/upload', {method: 'POST', body: formData, credentials: 'include'});
+        await loadFiles();
+    });
+
+    refreshBtn.addEventListener('click', loadFiles);
+    newFolderBtn.addEventListener('click', async () => {
+        const name = prompt('Folder name');
+        if (!name) return;
+        const path = currentPath ? `${currentPath}/${name}` : name;
+        await fetch(`/api/files/directories?sourceId=${sourceId}&path=${encodeURIComponent(path)}`, {method: 'POST', credentials: 'include'});
+        await loadFiles();
+    });
+
+    upBtn.addEventListener('click', () => {
+        if (!currentPath) return;
+        const idx = currentPath.lastIndexOf('/');
+        currentPath = idx >= 0 ? currentPath.substring(0, idx) : '';
+        renderPath();
+        loadFiles();
+    });
+
+async function loadFiles() {
+        const res = await fetch(`/api/files/browse?sourceId=${sourceId}&path=${encodeURIComponent(currentPath)}`, {credentials: 'include'});
+        if (res.status === 401) {
+            filesCache = [];
+            renderFiles();
+            return;
+        }
+        filesCache = await res.json();
+        renderFiles();
+}
+
+    function renderFiles() {
+        fileList.innerHTML = '';
+        renderPath();
+        const tpl = document.getElementById('file-row');
+        filesCache.forEach(file => {
+            const node = tpl.content.cloneNode(true);
+            node.querySelector('.file-row__name').textContent = file.directory ? `📁 ${file.filename}` : file.filename;
+            if (file.directory) {
+                node.querySelector('.file-row__info').textContent = 'Folder';
+                node.querySelector('.download-btn').remove();
+                node.querySelector('.preview-btn').textContent = 'Open';
+                node.querySelector('.preview-btn').addEventListener('click', () => openFolder(file));
+                node.querySelector('.link-btn').remove();
+            } else {
+                node.querySelector('.file-row__info').textContent = `${(file.size/1024).toFixed(1)} KB · ${file.contentType || 'unknown'}`;
+                node.querySelector('.download-btn').href = `/api/files/${file.id}/download`;
+                node.querySelector('.preview-btn').addEventListener('click', () => preview(file));
+                node.querySelector('.link-btn').addEventListener('click', () => createShortLink(file));
+            }
+            fileList.appendChild(node);
+        });
+    }
+
+    function renderPath() {
+        pathDisplay.textContent = currentPath ? `/${currentPath}` : '/';
+    }
+
+    function preview(file) {
+        previewArea.innerHTML = '';
+        const mime = (file.contentType || '').toLowerCase();
+        const url = `/api/files/${file.id}/preview`;
+        if (mime.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = file.filename;
+            previewArea.appendChild(img);
+        } else if (mime.startsWith('video/')) {
+            const video = document.createElement('video');
+            video.src = url;
+            video.controls = true;
+            video.className = 'media';
+            previewArea.appendChild(video);
+        } else if (mime.startsWith('audio/')) {
+            const audio = document.createElement('audio');
+            audio.src = url;
+            audio.controls = true;
+            previewArea.appendChild(audio);
+        } else if (mime.includes('pdf')) {
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            previewArea.appendChild(iframe);
+        } else {
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            previewArea.appendChild(iframe);
+        }
+    }
+
+    async function createShortLink(file) {
+        if (file.directory) return;
+        const res = await fetch(`/api/files/${file.id}/short-link`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ttlSeconds: 3600}), credentials: 'include'});
+        const data = await res.json();
+        navigator.clipboard.writeText(`${window.location.origin}${data.url}`).catch(() => {});
+        alert(`Short link copied: ${data.url}`);
+    }
+
+    function openFolder(file) {
+        currentPath = currentPath ? `${currentPath}/${file.filename}` : file.filename;
+        renderPath();
+        loadFiles();
+    }
+
+    async function loadUser() {
+        try {
+            const res = await fetch('/api/me', {credentials: 'include'});
+            if (res.status === 401) {
+                userBadge.innerHTML = '';
+                if (googleEnabled) {
+                    const btn = document.createElement('a');
+                    btn.className = 'btn primary';
+                    btn.href = '/oauth2/authorization/google';
+                    btn.textContent = 'Sign in with Google';
+                    userBadge.appendChild(btn);
+                } else {
+                    const span = document.createElement('span');
+                    span.className = 'muted';
+                    span.textContent = 'Login is not configured.';
+                    userBadge.appendChild(span);
+                }
+                return;
+            }
+            const user = await res.json();
+            userBadge.innerHTML = '';
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.textContent = (user.name || user.email || '?').slice(0, 1).toUpperCase();
+            const info = document.createElement('div');
+            info.className = 'user-info';
+            info.innerHTML = `<div class="user-name">${user.name || user.email}</div><div class="muted user-email">${user.email || ''}</div>`;
+            const logout = document.createElement('a');
+            logout.className = 'btn ghost';
+            logout.href = '/logout';
+            logout.textContent = 'Logout';
+            userBadge.appendChild(avatar);
+            userBadge.appendChild(info);
+            userBadge.appendChild(logout);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    loadUser();
+    loadFiles();
+</script>
+</body>
+</html>
