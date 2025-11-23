@@ -9,7 +9,7 @@
 <body th:data-google-enabled="${googleEnabled}">
 <aside class="sidebar">
     <div class="brand">Cloud Disk</div>
-    <ul class="menu" style="gap: 20px;">
+    <ul class="menu" style="gap: 40px;">
         <li>
             <button data-tab="files" class="active">我的文件 <span class="pill">Browse</span></button>
         </li>
@@ -23,7 +23,7 @@
 </aside>
 <main class="main">
     <div class="top-bar user-bar">
-        <div class="badge" id="sourceBadge">加载存储源...</div>
+        <div style="scale: 1.5;margin-left: 30px; " class="badge" id="sourceBadge">加载存储源...</div>
         <div class="spacer"></div>
         <div id="userBadge" class="user-badge"></div>
     </div>
@@ -47,6 +47,7 @@
                 <th>类型</th>
                 <th>大小</th>
                 <th>创建时间</th>
+                <th style="width: 240px;">操作</th>
             </tr>
             </thead>
             <tbody id="fileTable"></tbody>
@@ -64,9 +65,11 @@
             <thead>
             <tr>
                 <th>Token</th>
+                <th>提取码</th>
                 <th>文件</th>
                 <th>过期时间</th>
                 <th>创建时间</th>
+                <th>操作</th>
             </tr>
             </thead>
             <tbody id="shareTable"></tbody>
@@ -83,8 +86,43 @@
     </section>
 </main>
 
+<div id="shareModal" class="modal-layer">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3 style="margin:0;">创建分享</h3>
+            <span class="pill-tag" id="shareTargetLabel"></span>
+        </div>
+        <div class="input-control">
+            <label for="shareTtl">有效期</label>
+            <select id="shareTtl">
+                <option value="0">永久有效</option>
+                <option value="86400">1 天</option>
+                <option value="604800">7 天</option>
+                <option value="2592000">30 天</option>
+            </select>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="shareNeedCode">
+            <label for="shareNeedCode">需要提取码</label>
+        </div>
+        <div class="input-control" id="shareCodeBlock" style="display:none;">
+            <label for="shareCodeInput">提取码</label>
+            <div style="display:flex; gap:8px;">
+                <input id="shareCodeInput" placeholder="自动生成或自定义" maxlength="16">
+                <button class="action-btn" id="shareCodeGenerate" type="button">随机</button>
+            </div>
+            <div class="helper">留空将自动生成 4 位提取码</div>
+        </div>
+        <div id="shareResult" class="helper"></div>
+        <div class="modal-footer">
+            <button class="action-btn" id="shareCancel" type="button">取消</button>
+            <button class="action-btn" id="shareConfirm" type="button">生成并复制</button>
+        </div>
+    </div>
+</div>
+
 <script>
-    const state = {tab: 'files', sourceId: null, sourceName: '', path: ''};
+    const state = {tab: 'files', sourceId: null, sourceName: '', path: '', shareTarget: null};
     const googleEnabled = document.body.dataset.googleEnabled === 'true';
     const fileInput = document.getElementById('fileInput');
     const folderInput = document.getElementById('folderInput');
@@ -175,6 +213,7 @@
             const preferred =
                 sources.find((s) => (s.name || '').toLowerCase() === 'minio-default')
                 || sources[0];
+
             select.value = preferred.id;
             state.sourceId = Number(preferred.id);
             state.sourceName = preferred.name || `源 #${preferred.id}`;
@@ -199,35 +238,33 @@
     function renderBreadcrumbs() {
         const holder = document.getElementById('breadcrumbs');
         holder.innerHTML = '';
+        const makeCrumb = (text, targetPath, isActive) => {
+            const crumb = document.createElement('span');
+            crumb.className = `crumb${isActive ? ' active' : ''}`;
+            crumb.textContent = text;
+            crumb.onclick = () => navigateToPath(targetPath);
+            crumb.setAttribute('aria-current', isActive ? 'page' : 'false');
+            return crumb;
+        };
+        const makeSeparator = () => {
+            const separator = document.createElement('span');
+            separator.className = 'crumb-sep';
+            separator.textContent = '›';
+            return separator;
+        };
         const label = document.createElement('span');
         label.className = 'crumb-label';
         label.textContent = '当前位置';
         holder.appendChild(label);
 
-        const root = document.createElement('span');
-        root.className = `crumb${state.path ? '' : ' active'}`;
-        root.textContent = '根目录';
-        root.onclick = () => navigateToPath('');
-        root.setAttribute('aria-current', state.path ? 'false' : 'page');
-        holder.appendChild(root);
+        holder.appendChild(makeCrumb('根目录', '', !state.path));
 
         if (!state.path) return;
         let acc = '';
         state.path.split('/').filter(Boolean).forEach((part, idx, arr) => {
-            const separator = document.createElement('span');
-            separator.className = 'crumb-sep';
-            separator.textContent = '›';
-            holder.appendChild(separator);
-
             acc = acc ? acc + '/' + part : part;
-            const span = document.createElement('span');
-            span.className = `crumb${idx === arr.length - 1 ? ' active' : ''}`;
-            span.textContent = part;
-            span.setAttribute('aria-current', idx === arr.length - 1 ? 'page' : 'false');
-            if (idx < arr.length - 1) {
-                span.onclick = () => navigateToPath(acc);
-            }
-            holder.appendChild(span);
+            holder.appendChild(makeSeparator());
+            holder.appendChild(makeCrumb(part, acc, idx === arr.length - 1));
         });
     }
 
@@ -251,20 +288,176 @@
         const name = (item.filename || '').toLowerCase();
         const type = (item.contentType || '').toLowerCase();
         const ext = name.includes('.') ? name.substring(name.lastIndexOf('.') + 1) : '';
-        if (item.directory) return {cls: 'folder', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></svg>'};
-        const isImage = type.startsWith('image/') || ['png','jpg','jpeg','gif','bmp','svg','webp','heic','heif'].includes(ext);
-        if (isImage) return {cls: 'image', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m3 16 4.5-4.5a2 2 0 0 1 2.8 0L17 18"/></svg>'};
-        const isVideo = type.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext);
-        if (isVideo) return {cls: 'video', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>'};
-        const isAudio = type.startsWith('audio/') || ['mp3','wav','flac','aac','ogg','m4a'].includes(ext);
-        if (isAudio) return {cls: 'audio', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l9-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>'};
-        const isArchive = ['zip','rar','7z','tar','gz','tgz','bz2'].includes(ext);
-        if (isArchive) return {cls: 'archive', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 3v18M9 7h2M9 11h2M9 15h2"/></svg>'};
-        const isDoc = ['pdf','doc','docx','txt','md','rtf'].includes(ext);
-        if (isDoc) return {cls: 'doc', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v6h6"/></svg>'};
-        const isCode = ['js','ts','tsx','jsx','json','java','kt','go','py','rb','php','html','css','sql','xml','yml','yaml'].includes(ext);
-        if (isCode) return {cls: 'code', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 7l-2 10"/></svg>'};
-        return {cls: '', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5"/></svg>'};
+        if (item.directory) return {
+            cls: 'folder',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></svg>'
+        };
+        const isImage = type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp', 'heic', 'heif'].includes(ext);
+        if (isImage) return {
+            cls: 'image',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m3 16 4.5-4.5a2 2 0 0 1 2.8 0L17 18"/></svg>'
+        };
+        const isVideo = type.startsWith('video/') || ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext);
+        if (isVideo) return {
+            cls: 'video',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>'
+        };
+        const isAudio = type.startsWith('audio/') || ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext);
+        if (isAudio) return {
+            cls: 'audio',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l9-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>'
+        };
+        const isArchive = ['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2'].includes(ext);
+        if (isArchive) return {
+            cls: 'archive',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 3v18M9 7h2M9 11h2M9 15h2"/></svg>'
+        };
+        const isDoc = ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf'].includes(ext);
+        if (isDoc) return {
+            cls: 'doc',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v6h6"/></svg>'
+        };
+        const isCode = ['js', 'ts', 'tsx', 'jsx', 'json', 'java', 'kt', 'go', 'py', 'rb', 'php', 'html', 'css', 'sql', 'xml', 'yml', 'yaml'].includes(ext);
+        if (isCode) return {
+            cls: 'code',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 7l-2 10"/></svg>'
+        };
+        return {
+            cls: '',
+            svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5"/></svg>'
+        };
+    }
+
+    function createActionButton(text, title, handler, disabled = false) {
+        const btn = document.createElement('button');
+        btn.className = 'action-btn';
+        btn.textContent = text;
+        btn.title = title;
+        btn.type = 'button';
+        btn.disabled = disabled;
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            handler();
+        };
+        return btn;
+    }
+
+    function buildShareLink(token, code) {
+        return `${window.location.origin}/s/${token}${code ? `?code=${code}` : ''}`;
+    }
+
+    async function copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (err) {
+            console.warn('Clipboard copy failed', err);
+            return false;
+        }
+    }
+
+    function randomCode() {
+        return Math.random().toString(36).slice(2, 6).toUpperCase();
+    }
+
+    function openShareModal(item) {
+        state.shareTarget = item;
+        document.getElementById('shareTargetLabel').textContent = item.filename;
+        document.getElementById('shareTtl').value = '604800';
+        document.getElementById('shareNeedCode').checked = false;
+        document.getElementById('shareCodeBlock').style.display = 'none';
+        document.getElementById('shareCodeInput').value = randomCode();
+        const result = document.getElementById('shareResult');
+        result.textContent = '';
+        result.style.color = 'var(--muted)';
+        document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    function closeShareModal() {
+        state.shareTarget = null;
+        document.getElementById('shareModal').style.display = 'none';
+    }
+
+    async function confirmShare() {
+        if (!state.shareTarget) return;
+        const ttlSeconds = parseInt(document.getElementById('shareTtl').value, 10);
+        const needCode = document.getElementById('shareNeedCode').checked;
+        const codeInput = document.getElementById('shareCodeInput').value.trim();
+        const accessCode = needCode ? (codeInput || randomCode()) : null;
+        const payload = {};
+        if (!Number.isNaN(ttlSeconds) && ttlSeconds > 0) {
+            payload.ttlSeconds = ttlSeconds;
+        }
+        if (accessCode) {
+            payload.accessCode = accessCode;
+        }
+        const result = document.getElementById('shareResult');
+        result.style.color = 'var(--muted)';
+        result.textContent = '生成中...';
+        try {
+            const res = await fetch(`/api/files/${state.shareTarget.id}/short-link`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+                credentials: 'include'
+            });
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || '创建分享失败');
+            }
+            const data = await res.json();
+            const link = buildShareLink(data.token, data.accessCode);
+            await copyToClipboard(
+                data.accessCode ? `${link} 提取码: ${data.accessCode}` : link
+            );
+            result.textContent = data.accessCode ? '链接和提取码已复制' : '链接已复制';
+            loadShares();
+            setTimeout(() => closeShareModal(), 800);
+        } catch (err) {
+            result.style.color = '#f87171';
+            result.textContent = err.message || '创建分享失败';
+        }
+    }
+
+    async function downloadItem(item) {
+        if (item.directory) return;
+        window.open(`/api/files/${item.id}/download`, '_blank');
+    }
+
+    async function renameItem(item) {
+        const newName = prompt('请输入新的名称', item.filename);
+        if (!newName || newName.trim() === item.filename) return;
+        try {
+            const res = await fetch(`/api/files/${item.id}/rename`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({filename: newName.trim()}),
+                credentials: 'include'
+            });
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || '重命名失败');
+            }
+            await loadFiles(state.path);
+        } catch (e) {
+            showError('fileError', e.message);
+        }
+    }
+
+    async function deleteItem(item) {
+        const confirmText = item.directory ? '确定删除该文件夹及其子内容？' : '确定删除该文件？';
+        if (!confirm(confirmText)) return;
+        try {
+            const res = await fetch(`/api/files/${item.id}`, {method: 'DELETE', credentials: 'include'});
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || '删除失败');
+            }
+            await loadFiles(state.path);
+            loadShares();
+        } catch (e) {
+            showError('fileError', e.message);
+        }
     }
 
     async function loadFiles(path) {
@@ -311,6 +504,23 @@
                 const timeTd = document.createElement('td');
                 timeTd.textContent = humanTime(item.createdAt);
                 tr.appendChild(timeTd);
+                const actionsTd = document.createElement('td');
+                const actions = document.createElement('div');
+                actions.className = 'actions';
+                actions.appendChild(
+                    createActionButton('下载', '下载文件', () => downloadItem(item), item.directory)
+                );
+                actions.appendChild(
+                    createActionButton('重命名', '重命名此项', () => renameItem(item))
+                );
+                actions.appendChild(
+                    createActionButton('删除', '删除此项', () => deleteItem(item))
+                );
+                actions.appendChild(
+                    createActionButton('分享', '创建分享链接', () => openShareModal(item), item.directory)
+                );
+                actionsTd.appendChild(actions);
+                tr.appendChild(actionsTd);
                 tbody.appendChild(tr);
             });
         } catch (e) {
@@ -338,12 +548,22 @@
             document.getElementById('shareEmpty').style.display = data.length ? 'none' : 'block';
             data.forEach(item => {
                 const tr = document.createElement('tr');
+                const link = buildShareLink(item.token, item.accessCode);
                 tr.innerHTML = `
                     <td><code>${item.token}</code></td>
+                    <td>${item.accessCode ? item.accessCode : '免提取'}</td>
                     <td>${item.fileItem ? item.fileItem.filename : '-'}</td>
                     <td>${item.expiresAt ? humanTime(item.expiresAt) : '永久'}</td>
                     <td>${humanTime(item.createdAt)}</td>
                 `;
+                const ops = document.createElement('td');
+                const btn = createActionButton(
+                    '复制',
+                    '复制分享信息',
+                    () => copyToClipboard(item.accessCode ? `${link} 提取码: ${item.accessCode}` : link)
+                );
+                ops.appendChild(btn);
+                tr.appendChild(ops);
                 tbody.appendChild(tr);
             });
         } catch (e) {
@@ -459,6 +679,25 @@
             throw new Error('上传失败');
         }
     }
+
+    document.getElementById('shareCancel').onclick = closeShareModal;
+    document.getElementById('shareConfirm').onclick = confirmShare;
+    document.getElementById('shareCodeGenerate').onclick = () => {
+        document.getElementById('shareCodeInput').value = randomCode();
+    };
+    document.getElementById('shareNeedCode').onchange = (e) => {
+        document.getElementById('shareCodeBlock').style.display = e.target.checked ? 'block' : 'none';
+    };
+    document.getElementById('shareModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('shareModal')) {
+            closeShareModal();
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeShareModal();
+        }
+    });
 
     loadSources().then(applyInitialRoute);
     loadUser();

@@ -18,4 +18,6 @@ public interface StorageService {
       InputStream data);
 
   InputStream load(StorageSource source, FileItem file);
+
+  void delete(StorageSource source, FileItem file);
 }

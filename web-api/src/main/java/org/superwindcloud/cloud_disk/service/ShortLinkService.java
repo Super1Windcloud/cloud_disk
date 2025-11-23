@@ -17,20 +17,28 @@ public class ShortLinkService {
     this.shortLinkRepository = shortLinkRepository;
   }
 
-  public ShortLink create(FileItem fileItem, Duration ttl) {
+  public ShortLink create(FileItem fileItem, Duration ttl, String accessCode) {
     ShortLink link = new ShortLink();
     link.setFileItem(fileItem);
     link.setToken(UUID.randomUUID().toString().replace("-", "").substring(0, 10));
+    if (accessCode != null && !accessCode.isBlank()) {
+      link.setAccessCode(accessCode.trim());
+    }
     if (ttl != null) {
       link.setExpiresAt(Instant.now().plus(ttl));
     }
     return shortLinkRepository.save(link);
   }
 
-  public Optional<ShortLink> resolve(String token) {
+  public Optional<ShortLink> resolve(String token, String providedCode) {
     return shortLinkRepository
         .findByToken(token)
-        .filter(link -> link.getExpiresAt() == null || link.getExpiresAt().isAfter(Instant.now()));
+        .filter(link -> link.getExpiresAt() == null || link.getExpiresAt().isAfter(Instant.now()))
+        .filter(
+            link ->
+                link.getAccessCode() == null
+                    || link.getAccessCode().isBlank()
+                    || link.getAccessCode().equals(providedCode));
   }
 
   public void cleanupExpired() {

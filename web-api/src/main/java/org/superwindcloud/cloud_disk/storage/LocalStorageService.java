@@ -87,4 +87,18 @@ public class LocalStorageService implements StorageService {
       throw new RuntimeException("Failed to read file", e);
     }
   }
+
+  @Override
+  public void delete(StorageSource source, FileItem file) {
+    Path root = Path.of(source.getConfig()).toAbsolutePath().normalize();
+    Path path = root.resolve(file.getStoragePath()).normalize();
+    if (!path.startsWith(root)) {
+      throw new IllegalArgumentException("Invalid file path");
+    }
+    try {
+      Files.deleteIfExists(path);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to delete file", e);
+    }
+  }
 }

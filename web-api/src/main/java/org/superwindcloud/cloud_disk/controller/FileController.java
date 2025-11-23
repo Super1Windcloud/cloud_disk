@@ -1,15 +1,20 @@
 package org.superwindcloud.cloud_disk.controller;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -128,9 +133,12 @@ public class FileController {
         StringUtils.hasText(file.getContentType())
             ? file.getContentType()
             : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+    ContentDisposition disposition =
+        ContentDisposition.attachment()
+            .filename(file.getFilename(), StandardCharsets.UTF_8)
+            .build();
     return ResponseEntity.ok()
-        .header(
-            HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")
+        .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
         .contentType(MediaType.parseMediaType(contentType))
         .body(new InputStreamResource(stream));
   }
@@ -151,8 +159,12 @@ public class FileController {
         StringUtils.hasText(file.getContentType())
             ? file.getContentType()
             : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+    ContentDisposition disposition =
+        ContentDisposition.inline()
+            .filename(file.getFilename(), StandardCharsets.UTF_8)
+            .build();
     return ResponseEntity.ok()
-        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getFilename() + "\"")
+        .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
         .contentType(MediaType.parseMediaType(contentType))
         .body(new InputStreamResource(stream));
   }
@@ -168,14 +180,27 @@ public class FileController {
       throw new IllegalArgumentException("Cannot create links for a directory");
     }
     Duration ttl = null;
+    String accessCode = null;
     if (body != null && body.containsKey("ttlSeconds")) {
       Object ttlSeconds = body.get("ttlSeconds");
       if (ttlSeconds instanceof Number number && number.longValue() > 0) {
         ttl = Duration.ofSeconds(number.longValue());
       }
     }
-    ShortLink link = shortLinkService.create(file, ttl);
-    return Map.of("token", link.getToken(), "url", "/s/" + link.getToken());
+    if (body != null && body.containsKey("accessCode")) {
+      Object code = body.get("accessCode");
+      if (code != null && StringUtils.hasText(code.toString())) {
+        accessCode = code.toString().trim();
+      }
+    }
+    ShortLink link = shortLinkService.create(file, ttl, accessCode);
+    Map<String, String> response = new HashMap<>();
+    response.put("token", link.getToken());
+    response.put("url", "/s/" + link.getToken());
+    if (link.getAccessCode() != null) {
+      response.put("accessCode", link.getAccessCode());
+    }
+    return response;
   }
 
   @GetMapping("/short-links")
@@ -210,10 +235,80 @@ public class FileController {
       }
     }
     if (ttl != null) {
-      ShortLink shortLink = shortLinkService.create(file, ttl);
+      ShortLink shortLink = shortLinkService.create(file, ttl, null);
       return Map.of("url", "/s/" + shortLink.getToken());
     }
     return Map.of("url", "/api/files/" + id + "/download");
+  }
+
+  @PostMapping("/{id}/rename")
+  @Transactional
+  public FileItem rename(
+      @PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
+    if (body == null || !body.containsKey("filename")) {
+      throw new IllegalArgumentException("New filename is required");
+    }
+    String newName = normalizeFilename(body.get("filename"));
+    FileItem item =
+        fileItemRepository
+            .findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("File not found"));
+    if (newName.equals(item.getFilename())) {
+      return item;
+    }
+    StorageSource source = item.getStorageSource();
+    if (fileItemRepository.existsByStorageSourceIdAndDirectoryPathAndFilename(
+        source.getId(), item.getDirectoryPath(), newName)) {
+      throw new IllegalArgumentException("A file or folder with this name already exists here");
+    }
+    if (item.isDirectory()) {
+      String oldFullPath = fullPath(item);
+      String newFullPath =
+          item.getDirectoryPath().isBlank()
+              ? newName
+              : item.getDirectoryPath() + "/" + newName;
+      List<FileItem> descendants = fileItemRepository.findDescendants(source.getId(), oldFullPath);
+      for (FileItem descendant : descendants) {
+        String path = descendant.getDirectoryPath();
+        String updatedPath =
+            path.equals(oldFullPath)
+                ? newFullPath
+                : newFullPath + path.substring(oldFullPath.length());
+        descendant.setDirectoryPath(updatedPath);
+      }
+      fileItemRepository.saveAll(descendants);
+      item.setStoragePath(newFullPath + "/");
+    }
+    item.setFilename(newName);
+    return fileItemRepository.save(item);
+  }
+
+  @DeleteMapping("/{id}")
+  @Transactional
+  public Map<String, String> delete(@PathVariable Long id) {
+    FileItem item =
+        fileItemRepository
+            .findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("File not found"));
+    StorageSource source = item.getStorageSource();
+    StorageService storageService = resolveStorage(source);
+    if (item.isDirectory()) {
+      String fullPath = fullPath(item);
+      List<FileItem> descendants = fileItemRepository.findDescendants(source.getId(), fullPath);
+      for (FileItem child : descendants) {
+        shortLinkRepository.deleteByFileItemId(child.getId());
+        if (!child.isDirectory()) {
+          storageService.delete(source, child);
+        }
+      }
+      fileItemRepository.deleteAll(descendants);
+    }
+    shortLinkRepository.deleteByFileItemId(item.getId());
+    if (!item.isDirectory()) {
+      storageService.delete(source, item);
+    }
+    fileItemRepository.delete(item);
+    return Map.of("status", "deleted");
   }
 
   private StorageService resolveStorage(StorageSource source) {
@@ -290,5 +385,31 @@ public class FileController {
   private String leaf(String normalized) {
     int idx = normalized.lastIndexOf('/');
     return idx < 0 ? normalized : normalized.substring(idx + 1);
+  }
+
+  private String fullPath(FileItem file) {
+    return file.getDirectoryPath().isBlank()
+        ? file.getFilename()
+        : file.getDirectoryPath() + "/" + file.getFilename();
+  }
+
+  private String normalizeFilename(String raw) {
+    if (!StringUtils.hasText(raw)) {
+      throw new IllegalArgumentException("Filename cannot be blank");
+    }
+    String cleaned = raw.trim();
+    if (cleaned.equals(".") || cleaned.equals("..")) {
+      throw new IllegalArgumentException("Invalid filename");
+    }
+    if (cleaned.contains("/") || cleaned.contains("\\")) {
+      throw new IllegalArgumentException("Filename cannot contain path separators");
+    }
+    if (cleaned.endsWith(" ") || cleaned.endsWith(".")) {
+      throw new IllegalArgumentException("Filename cannot end with space or dot");
+    }
+    if (cleaned.matches(".*[<>:\"|?*].*")) {
+      throw new IllegalArgumentException("Filename contains invalid characters");
+    }
+    return cleaned;
   }
 }

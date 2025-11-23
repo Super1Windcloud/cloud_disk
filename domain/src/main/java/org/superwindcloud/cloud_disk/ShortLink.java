@@ -30,6 +30,9 @@ public class ShortLink {
   @Column(name = "expires_at")
   private Instant expiresAt;
 
+  @Column(name = "access_code", length = 32)
+  private String accessCode;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;

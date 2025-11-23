@@ -1,36 +1,29 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Java sources live in `src/main/java/org/superwindcloud/cloud_disk`; entrypoint is `CloudDiskApplication`.
-- Views and config are under `src/main/resources` (`templates/` for Thymeleaf, `static/` for assets, `application.properties` for runtime settings).
-- Tests mirror the main package in `src/test/java/org/superwindcloud/cloud_disk`.
-- `compose.yaml` defines local Postgres and Redis services; Spring Boot’s Docker Compose integration is currently disabled via `spring.docker.compose.enabled=false`.
+- Maven multi-module layout: `domain` (entities and value objects), `repository` (JPA repositories), `web-api` (controllers/services), and `application` (Spring Boot runnable app and configs). Common resources live in `application/src/main/resources`.
+- Root build files: `pom.xml` orchestrates modules; `compose.yaml` provisions Postgres, Redis, and MinIO for local dev. Scripts/hooks sit under `.husky` and `justfile`.
 
 ## Build, Test, and Development Commands
-- `./mvnw spring-boot:run` — start the app with local configuration (expects Postgres on `localhost:5432` and Redis on `6379`).
-- `./mvnw test` — run the test suite.
-- `./mvnw package` — build the executable JAR under `target/`.
-- `docker compose up -d` — bring up Postgres/Redis as defined in `compose.yaml` (enable Compose in properties if you want Spring Boot to manage it).
+- Bootstrap dependencies: `npm install` (sets up Husky) and `./mvnw -v` to confirm wrapper/Java 17.
+- Build all modules: `./mvnw clean verify`. Package without tests: `./mvnw -DskipTests package`.
+- Run locally: `./mvnw -pl application spring-boot:run` (picks up `application` module). Backend jar lives in `application/target/`.
+- Bring up services: `docker compose up -d` (uses defaults from `compose.yaml`).
+- Format/lint: `npm run fmt` (Spotless apply) and `npm run lint` (Checkstyle check). CI-safe check: `npm run fmt:check`.
 
 ## Coding Style & Naming Conventions
-- Java 17; prefer 4-space indentation and trailing newline.
-- Classes/interfaces use PascalCase; methods/fields use camelCase; constants are UPPER_SNAKE_CASE.
-- Keep controllers/services/repositories annotated (`@RestController`, `@Service`, `@Repository`) and colocated by feature when added.
-- Favor Lombok for boilerplate, but keep constructors explicit when clarity helps testing.
-- Externalize env-specific settings in `application.properties` or profiles; avoid hardcoding secrets.
+- Java 17, Google Java Format via Spotless; Checkstyle uses `google_checks.xml`. Two-space indent, 100-char lines, imports ordered automatically.
+- Packages under `org.superwindcloud.cloud_disk`. Classes use PascalCase, fields camelCase. JPA entities end with singular nouns (e.g., `FileItem`); repositories end with `Repository`.
+- Favor Lombok for boilerplate but keep constructors visible when needed for frameworks.
 
 ## Testing Guidelines
-- Use Spring Boot test starters (JUnit/MockMvc) already on the classpath.
-- Name test classes with `*Tests` and keep them parallel to the source package.
-- For data-dependent tests, seed via SQL/data builders instead of depending on existing databases; prefer `@DataJpaTest` and `@SpringBootTest` only when needed.
-- Run `./mvnw test` before opening a PR; include any new integration tests when touching persistence or security flows.
-
-## Security & Configuration Tips
-- Default credentials expect a Postgres role/db `cloud_disk` with password `cloud_disk`; adjust `spring.datasource.*` as needed.
-- If running without Docker, ensure local Postgres/Redis match the ports in `compose.yaml`.
-- Do not commit real secrets or tokens; use environment variables or a local profile file excluded from VCS.
+- Test runner: `./mvnw test` (or `./mvnw -pl web-api test` per module). Add Spring MVC slice tests for controllers and repository integration tests against Postgres (use `@DataJpaTest` with testcontainers or local compose).
+- Name tests `*Test.java`; structure given/when/then in method names. Aim for coverage on authentication, storage interactions (MinIO), and link shortener flows.
 
 ## Commit & Pull Request Guidelines
-- Use concise, imperative commit messages (e.g., “Add user registration endpoint”); group logical changes together.
-- PRs should describe intent, list key changes, and note testing performed (`./mvnw test`, manual scenarios).
-- Link related issues/tickets when applicable; include screenshots for UI-affecting changes.
+- Commits: short imperative subject (<72 chars), note affected module in scope when useful (e.g., `web-api: secure file upload`). Squash local fixups before pushing.
+- PRs: include summary of change, test evidence/commands run, and any config changes (.env, compose, schema). Add screenshots or curl examples for new endpoints/Swagger changes. Link related issues and request reviewers touching the same module boundaries (domain ↔ repository ↔ web-api).
+
+## Security & Configuration Tips
+- Secrets: never commit real credentials; sample values live in `.env`/`compose.yaml`. Use environment overrides for OAuth clients and MinIO access keys.
+- Validate inbound data with `spring-boot-starter-validation`; keep controllers thin and push business rules into services/domain objects.

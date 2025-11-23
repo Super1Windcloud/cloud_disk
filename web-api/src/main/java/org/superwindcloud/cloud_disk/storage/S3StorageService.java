@@ -6,6 +6,7 @@ import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import java.io.ByteArrayInputStream;
@@ -215,6 +216,21 @@ public class S3StorageService implements LinkableStorageService {
       throw new IllegalArgumentException("Invalid path");
     }
     return cleaned;
+  }
+
+  @Override
+  public void delete(StorageSource source, FileItem file) {
+    S3Config config = parseConfig(source);
+    try {
+      getClient(config, source.getId())
+          .removeObject(
+              RemoveObjectArgs.builder()
+                  .bucket(config.bucket())
+                  .object(file.getStoragePath())
+                  .build());
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to delete object from S3", e);
+    }
   }
 
   private record S3Config(

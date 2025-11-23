@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 public interface ShortLinkRepository extends JpaRepository<ShortLink, Long> {
   Optional<ShortLink> findByToken(String token);
 
+  void deleteByFileItemId(Long fileItemId);
+
   @Transactional
   @Modifying
   @Query("delete from ShortLink s where s.expiresAt is not null and s.expiresAt < :now")
