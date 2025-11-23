@@ -31,7 +31,8 @@ public class ShortLinkRedirectController {
 
   @GetMapping("/s/{token}")
   public ResponseEntity<InputStreamResource> resolve(
-      @PathVariable String token, @RequestParam(value = "code", required = false) String accessCode) {
+      @PathVariable String token,
+      @RequestParam(value = "code", required = false) String accessCode) {
     ShortLink link =
         shortLinkService
             .resolve(token, accessCode)

@@ -160,9 +160,7 @@ public class FileController {
             ? file.getContentType()
             : MediaType.APPLICATION_OCTET_STREAM_VALUE;
     ContentDisposition disposition =
-        ContentDisposition.inline()
-            .filename(file.getFilename(), StandardCharsets.UTF_8)
-            .build();
+        ContentDisposition.inline().filename(file.getFilename(), StandardCharsets.UTF_8).build();
     return ResponseEntity.ok()
         .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
         .contentType(MediaType.parseMediaType(contentType))
@@ -264,9 +262,7 @@ public class FileController {
     if (item.isDirectory()) {
       String oldFullPath = fullPath(item);
       String newFullPath =
-          item.getDirectoryPath().isBlank()
-              ? newName
-              : item.getDirectoryPath() + "/" + newName;
+          item.getDirectoryPath().isBlank() ? newName : item.getDirectoryPath() + "/" + newName;
       List<FileItem> descendants = fileItemRepository.findDescendants(source.getId(), oldFullPath);
       for (FileItem descendant : descendants) {
         String path = descendant.getDirectoryPath();
