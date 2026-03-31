@@ -48,7 +48,7 @@ public class FileController {
       FileItemRepository fileItemRepository,
       ShortLinkService shortLinkService,
       ShortLinkRepository shortLinkRepository) {
-    this.storageServices = storageServices;
+    this.storageServices = List.copyOf(storageServices);
     this.storageSourceRepository = storageSourceRepository;
     this.fileItemRepository = fileItemRepository;
     this.shortLinkService = shortLinkService;
@@ -104,9 +104,6 @@ public class FileController {
     if (normalized.isBlank()) {
       throw new IllegalArgumentException("Directory path cannot be blank");
     }
-    String parent = parentPath(normalized);
-    String name = leaf(normalized);
-
     StorageSource source =
         storageSourceRepository
             .findById(sourceId)

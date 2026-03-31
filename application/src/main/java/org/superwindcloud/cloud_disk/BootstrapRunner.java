@@ -46,7 +46,7 @@ public class BootstrapRunner implements ApplicationRunner {
   public BootstrapRunner(
       StorageSourceRepository storageSourceRepository, ObjectMapper objectMapper) {
     this.storageSourceRepository = storageSourceRepository;
-    this.objectMapper = objectMapper;
+    this.objectMapper = objectMapper.copy();
   }
 
   @Override

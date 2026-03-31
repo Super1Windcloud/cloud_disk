@@ -26,7 +26,7 @@ public class ShortLinkRedirectController {
   public ShortLinkRedirectController(
       ShortLinkService shortLinkService, java.util.List<StorageService> storageServices) {
     this.shortLinkService = shortLinkService;
-    this.storageServices = storageServices;
+    this.storageServices = java.util.List.copyOf(storageServices);
   }
 
   @GetMapping("/s/{token}")

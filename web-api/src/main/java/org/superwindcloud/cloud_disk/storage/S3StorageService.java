@@ -30,7 +30,7 @@ public class S3StorageService implements LinkableStorageService {
 
   public S3StorageService(FileItemRepository fileItemRepository, ObjectMapper objectMapper) {
     this.fileItemRepository = fileItemRepository;
-    this.objectMapper = objectMapper;
+    this.objectMapper = objectMapper.copy();
   }
 
   @Override

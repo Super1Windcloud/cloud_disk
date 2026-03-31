@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <Match>
+    <Class name="org.superwindcloud.cloud_disk.FileItem" />
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2" />
+  </Match>
+  <Match>
+    <Class name="org.superwindcloud.cloud_disk.ShortLink" />
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2" />
+  </Match>
+  <Match>
+    <Class name="org.superwindcloud.cloud_disk.controller.FileController" />
+    <Method name="&lt;init&gt;" />
+    <Bug pattern="EI_EXPOSE_REP2" />
+  </Match>
+  <Match>
+    <Class name="org.superwindcloud.cloud_disk.service.ShortLinkService" />
+    <Method name="&lt;init&gt;" />
+    <Bug pattern="EI_EXPOSE_REP2" />
+  </Match>
+</FindBugsFilter>
